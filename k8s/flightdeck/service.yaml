@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: flightdeck
+  labels:
+    app.kubernetes.io/name: flightdeck
+spec:
+  selector:
+    app.kubernetes.io/name: flightdeck
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

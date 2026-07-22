@@ -4,4 +4,5 @@
 docs
 infra
 k8s
+frontend/node_modules
 

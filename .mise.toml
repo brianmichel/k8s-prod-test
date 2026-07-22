@@ -85,18 +85,43 @@ run = 'kubectl --context "$KUBE_CONTEXT" --namespace "$KUBE_NAMESPACE" exec --st
 description = "Run Go tests and validate rendered Kubernetes YAML"
 run = [
   "go test ./...",
+  "npm --prefix frontend run build",
   "kubectl kustomize k8s/overlays/local >/dev/null",
   "kubectl kustomize k8s/progressive/bluegreen >/dev/null",
   "kubectl kustomize k8s/progressive/canary >/dev/null",
   "kubectl kustomize k8s/optional >/dev/null",
+  "kubectl kustomize k8s/flightdeck >/dev/null",
   "mise exec -- yq eval '.' gitops/argocd/playground-api.yaml >/dev/null",
   "mise exec -- yq eval '.' gitops/argocd/playground-api-bluegreen.yaml >/dev/null",
   "mise exec -- yq eval '.' gitops/argocd/playground-api-canary.yaml >/dev/null",
 ]
 
+[tasks.flightdeck-image]
+description = "Build and load the Flightdeck dashboard image"
+run = [
+  'docker build --file Dockerfile.flightdeck --tag flightdeck:dev .',
+  'kind load docker-image flightdeck:dev --name "$KIND_CLUSTER_NAME"',
+]
+
+[tasks.flightdeck-deploy]
+description = "Deploy Flightdeck and wait until it is ready"
+run = [
+  "mise run cluster-up",
+  "mise run flightdeck-image",
+  'kubectl --context "$KUBE_CONTEXT" apply --kustomize k8s/flightdeck',
+  'kubectl --context "$KUBE_CONTEXT" --namespace flightdeck rollout status deployment/flightdeck --timeout=120s',
+]
+
+[tasks.flightdeck-ui]
+description = "Open Flightdeck at http://127.0.0.1:8090"
+run = 'kubectl --context "$KUBE_CONTEXT" --namespace flightdeck port-forward service/flightdeck 8090:80'
+
 [tasks.clean]
-description = "Remove the lab namespace but keep the cluster"
-run = 'kubectl --context "$KUBE_CONTEXT" delete namespace "$KUBE_NAMESPACE" --ignore-not-found'
+description = "Remove the lab namespaces but keep the cluster"
+run = [
+  'kubectl --context "$KUBE_CONTEXT" delete namespace "$KUBE_NAMESPACE" --ignore-not-found',
+  'kubectl --context "$KUBE_CONTEXT" delete namespace flightdeck --ignore-not-found',
+]
 
 [tasks.argocd-install]
 description = "Install the pinned Argo CD release into the cluster"

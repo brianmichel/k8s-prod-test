@@ -43,6 +43,8 @@ You should see the ConfigMap message, the pod name/namespace/IP, and `secretConf
 | `mise run argocd-ui` | Reach the Argo CD UI at `https://127.0.0.1:8081` |
 | `mise run argocd-password` | Print the initial local Argo CD admin password |
 | `mise run rollouts-install` | Install the Argo Rollouts controller and CRDs |
+| `mise run flightdeck-deploy` | Build and deploy the Flightdeck delivery dashboard |
+| `mise run flightdeck-ui` | Reach Flightdeck at `http://127.0.0.1:8090` |
 | `mise run bluegreen-apply` | Apply the blue-green rollout example |
 | `mise run canary-apply` | Apply the canary rollout example |
 | `mise run status` | Inspect workloads, service, ConfigMap, and Secret metadata |
@@ -81,6 +83,17 @@ There are now two deployment paths to compare:
 2. Argo CD is a controller-driven deployment: an `Application` declares a Git repository and path, then Argo CD continuously reconciles that source into the cluster.
 
 The `Application` currently contains a placeholder Git URL because this checkout has no remote repository. Replace `repoURL` in [gitops/argocd/playground-api.yaml](gitops/argocd/playground-api.yaml) with a reachable repository before registering it. See [docs/argocd.md](docs/argocd.md) for the full flow.
+
+## Flightdeck dashboard
+
+Flightdeck is a deliberately thin dashboard over the resources already in the cluster. It displays Argo CD Applications, Argo Rollouts, Deployments, and pod readiness without introducing a new environment or promotion model. It can request an Argo CD sync and promote or abort a Rollout using its service account RBAC.
+
+```sh
+mise run flightdeck-deploy
+mise run flightdeck-ui
+```
+
+Open [http://127.0.0.1:8090](http://127.0.0.1:8090). The dashboard reads all namespaces so it can correlate the `argocd` control plane with workloads in `learning-lab`; its write access is limited to patching Applications and Rollouts. The frontend is a Vue 3 application in `frontend/`; daisyUI provides its shared controls and custom Flightdeck theme, while Vue Flow handles viewport and edge rendering and Dagre provides automatic Kubernetes ownership layout. The production container builds and embeds the frontend into the Go server.
 
 Progressive delivery is separate from the baseline Deployment. Install Argo Rollouts, then choose one experiment:
 

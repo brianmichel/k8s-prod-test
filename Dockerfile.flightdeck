@@ -1,0 +1,19 @@
+FROM node:22-alpine AS ui
+WORKDIR /src/frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend ./
+RUN npm run build
+
+FROM golang:1.24.4 AS build
+WORKDIR /src
+COPY go.mod ./
+COPY cmd/flightdeck ./cmd/flightdeck
+COPY --from=ui /src/cmd/flightdeck/web ./cmd/flightdeck/web
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags='-s -w' -o /out/flightdeck ./cmd/flightdeck
+
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /out/flightdeck /flightdeck
+EXPOSE 8080
+USER 65532:65532
+ENTRYPOINT ["/flightdeck"]
