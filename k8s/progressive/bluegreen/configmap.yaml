@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: playground-api-bluegreen-config
+  labels:
+    app: playground-api-bluegreen
+data:
+  APP_NAME: playground-api
+  APP_VERSION: bluegreen-v1
+  APP_MESSAGE: hello from the blue-green Rollout
+  READY_AFTER_SECONDS: "3"

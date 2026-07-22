@@ -1,0 +1,30 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: playground-api
+  namespace: argocd
+  labels:
+    purpose: learning
+spec:
+  project: default
+  source:
+    # Replace this with a Git URL that Argo CD can reach.
+    repoURL: https://github.com/REPLACE_ME/k8s-prod-test.git
+    targetRevision: main
+    path: k8s/overlays/local
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: learning-lab
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+    retry:
+      limit: 3
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 1m
+

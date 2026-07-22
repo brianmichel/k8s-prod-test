@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: playground-api-config
+  labels:
+    app: playground-api
+data:
+  APP_NAME: playground-api
+  APP_VERSION: v1
+  APP_MESSAGE: hello from a ConfigMap
+  READY_AFTER_SECONDS: "3"

@@ -1,0 +1,90 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: playground-api-bluegreen
+  labels:
+    app: playground-api-bluegreen
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: playground-api-bluegreen
+  template:
+    metadata:
+      labels:
+        app: playground-api-bluegreen
+    spec:
+      serviceAccountName: playground-api-bluegreen
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 15
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: api
+          image: playground-api:dev
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: playground-api-bluegreen-config
+          env:
+            - name: APP_VERSION
+              value: bluegreen-v1
+            - name: SECRET_MESSAGE
+              valueFrom:
+                secretKeyRef:
+                  name: playground-api-bluegreen-secret
+                  key: SECRET_MESSAGE
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+          startupProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 1
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 2
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+  strategy:
+    blueGreen:
+      activeService: playground-api-bluegreen-active
+      previewService: playground-api-bluegreen-preview
+      autoPromotionEnabled: false
+      previewReplicaCount: 1
+      scaleDownDelaySeconds: 30
+      prePromotionAnalysis:
+        templates:
+          - templateName: playground-api-preview-smoke
+        args:
+          - name: service-name
+            value: playground-api-bluegreen-preview

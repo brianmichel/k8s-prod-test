@@ -1,0 +1,197 @@
+[tools]
+go = "1.24.4"
+kubectl = "1.33.2"
+kind = "0.29.0"
+helm = "3.18.3"
+jq = "1.7.1"
+yq = "4.45.4"
+argocd = "3.4.2"
+argo-rollouts = "1.9.1"
+
+[env]
+KIND_CLUSTER_NAME = "learning-lab"
+KUBE_CONTEXT = "kind-learning-lab"
+KUBE_NAMESPACE = "learning-lab"
+APP_IMAGE = "playground-api:dev"
+ARGOCD_NAMESPACE = "argocd"
+ARGOCD_VERSION = "3.4.2"
+ARGO_ROLLOUTS_NAMESPACE = "argo-rollouts"
+ARGO_ROLLOUTS_VERSION = "1.9.1"
+
+[tasks.install]
+description = "Install the pinned CLI tools managed by mise"
+run = "mise install"
+
+[tasks.doctor]
+description = "Check Docker and the lab CLI toolchain"
+run = [
+  "docker info",
+  "kubectl version --client",
+  "kind version",
+  "helm version --short",
+  "jq --version",
+  "yq --version",
+  "argocd version --client",
+  "kubectl argo rollouts version",
+]
+
+[tasks.cluster-up]
+description = "Create the local kind cluster if it does not exist"
+run = 'kind get clusters | grep -qx "$KIND_CLUSTER_NAME" || kind create cluster --name "$KIND_CLUSTER_NAME" --config infra/kind.yaml'
+
+[tasks.cluster-down]
+description = "Delete the local kind cluster"
+run = 'kind delete cluster --name "$KIND_CLUSTER_NAME"'
+
+[tasks.image-build]
+description = "Build the playground API image"
+run = 'docker build --tag "$APP_IMAGE" .'
+
+[tasks.image-load]
+description = "Load the image into kind"
+run = 'kind load docker-image "$APP_IMAGE" --name "$KIND_CLUSTER_NAME"'
+
+[tasks.apply]
+description = "Apply the local Kubernetes manifests"
+run = 'kubectl --context "$KUBE_CONTEXT" apply --kustomize k8s/overlays/local'
+
+[tasks.deploy]
+description = "Build, load, apply, and wait for the API rollout"
+run = [
+  "mise run cluster-up",
+  "mise run image-build",
+  "mise run image-load",
+  "mise run apply",
+  'kubectl --context "$KUBE_CONTEXT" --namespace "$KUBE_NAMESPACE" rollout status deployment/playground-api --timeout=120s',
+]
+
+[tasks.status]
+description = "Show the lab resources"
+run = 'kubectl --context "$KUBE_CONTEXT" --namespace "$KUBE_NAMESPACE" get all,configmap,secret'
+
+[tasks.logs]
+description = "Tail the API logs"
+run = 'kubectl --context "$KUBE_CONTEXT" --namespace "$KUBE_NAMESPACE" logs --selector app=playground-api --follow --tail=100'
+
+[tasks.port-forward]
+description = "Expose the service at http://127.0.0.1:8080"
+run = 'kubectl --context "$KUBE_CONTEXT" --namespace "$KUBE_NAMESPACE" port-forward service/playground-api 8080:8080'
+
+[tasks.shell]
+description = "Open a shell in the running API container"
+run = 'kubectl --context "$KUBE_CONTEXT" --namespace "$KUBE_NAMESPACE" exec --stdin --tty deployment/playground-api -- sh'
+
+[tasks.test]
+description = "Run Go tests and validate rendered Kubernetes YAML"
+run = [
+  "go test ./...",
+  "kubectl kustomize k8s/overlays/local >/dev/null",
+  "kubectl kustomize k8s/progressive/bluegreen >/dev/null",
+  "kubectl kustomize k8s/progressive/canary >/dev/null",
+  "kubectl kustomize k8s/optional >/dev/null",
+  "mise exec -- yq eval '.' gitops/argocd/playground-api.yaml >/dev/null",
+  "mise exec -- yq eval '.' gitops/argocd/playground-api-bluegreen.yaml >/dev/null",
+  "mise exec -- yq eval '.' gitops/argocd/playground-api-canary.yaml >/dev/null",
+]
+
+[tasks.clean]
+description = "Remove the lab namespace but keep the cluster"
+run = 'kubectl --context "$KUBE_CONTEXT" delete namespace "$KUBE_NAMESPACE" --ignore-not-found'
+
+[tasks.argocd-install]
+description = "Install the pinned Argo CD release into the cluster"
+run = [
+  'kubectl --context "$KUBE_CONTEXT" create namespace "$ARGOCD_NAMESPACE" --dry-run=client -o yaml | kubectl --context "$KUBE_CONTEXT" apply -f -',
+  'kubectl --context "$KUBE_CONTEXT" --namespace "$ARGOCD_NAMESPACE" apply --server-side --force-conflicts -f "https://raw.githubusercontent.com/argoproj/argo-cd/v${ARGOCD_VERSION}/manifests/install.yaml"',
+  'kubectl --context "$KUBE_CONTEXT" --namespace "$ARGOCD_NAMESPACE" rollout status deployment/argocd-server --timeout=180s',
+]
+
+[tasks.argocd-status]
+description = "Inspect Argo CD components and the playground Application"
+run = [
+  'kubectl --context "$KUBE_CONTEXT" --namespace "$ARGOCD_NAMESPACE" get pods,svc',
+  'kubectl --context "$KUBE_CONTEXT" --namespace "$ARGOCD_NAMESPACE" get applications.argoproj.io',
+]
+
+[tasks.argocd-ui]
+description = "Expose the Argo CD UI at https://127.0.0.1:8081"
+run = 'kubectl --context "$KUBE_CONTEXT" --namespace "$ARGOCD_NAMESPACE" port-forward service/argocd-server 8081:443'
+
+[tasks.argocd-password]
+description = "Print the initial local Argo CD admin password"
+run = 'argocd admin initial-password --kube-context "$KUBE_CONTEXT" --namespace "$ARGOCD_NAMESPACE"'
+
+[tasks.argocd-application]
+description = "Register the GitOps Application manifest"
+run = 'kubectl --context "$KUBE_CONTEXT" apply -f gitops/argocd/playground-api.yaml'
+
+[tasks.argocd-bluegreen-application]
+description = "Register the blue-green GitOps Application manifest"
+run = 'kubectl --context "$KUBE_CONTEXT" apply -f gitops/argocd/playground-api-bluegreen.yaml'
+
+[tasks.argocd-canary-application]
+description = "Register the canary GitOps Application manifest"
+run = 'kubectl --context "$KUBE_CONTEXT" apply -f gitops/argocd/playground-api-canary.yaml'
+
+[tasks.argocd-get]
+description = "Read Application state through the Kubernetes API"
+run = 'argocd app get playground-api --core --kube-context "$KUBE_CONTEXT"'
+
+[tasks.argocd-sync]
+description = "Ask Argo CD to reconcile the playground Application"
+run = 'argocd app sync playground-api --core --kube-context "$KUBE_CONTEXT"'
+
+[tasks.rollouts-install]
+description = "Install the pinned Argo Rollouts controller and CRDs"
+run = [
+  'kubectl --context "$KUBE_CONTEXT" create namespace "$ARGO_ROLLOUTS_NAMESPACE" --dry-run=client -o yaml | kubectl --context "$KUBE_CONTEXT" apply -f -',
+  'kubectl --context "$KUBE_CONTEXT" --namespace "$ARGO_ROLLOUTS_NAMESPACE" apply -f "https://github.com/argoproj/argo-rollouts/releases/download/v${ARGO_ROLLOUTS_VERSION}/install.yaml"',
+  'kubectl --context "$KUBE_CONTEXT" --namespace "$ARGO_ROLLOUTS_NAMESPACE" rollout status deployment/argo-rollouts --timeout=180s',
+]
+
+[tasks.rollouts-status]
+description = "Inspect Rollout resources and the Rollouts controller"
+run = [
+  'kubectl --context "$KUBE_CONTEXT" --namespace "$ARGO_ROLLOUTS_NAMESPACE" get pods',
+  'kubectl --context "$KUBE_CONTEXT" --namespace "$KUBE_NAMESPACE" get rollouts,analysisruns,replicasets',
+]
+
+[tasks.bluegreen-apply]
+description = "Apply the blue-green Rollout example"
+run = 'kubectl --context "$KUBE_CONTEXT" apply --kustomize k8s/progressive/bluegreen'
+
+[tasks.bluegreen-status]
+description = "Watch blue-green Rollout state"
+run = 'kubectl argo rollouts get rollout playground-api-bluegreen --namespace "$KUBE_NAMESPACE" --watch'
+
+[tasks.bluegreen-preview]
+description = "Expose the blue-green preview Service at localhost:8082"
+run = 'kubectl --context "$KUBE_CONTEXT" --namespace "$KUBE_NAMESPACE" port-forward service/playground-api-bluegreen-preview 8082:8080'
+
+[tasks.bluegreen-promote]
+description = "Promote the blue-green preview to active"
+run = 'kubectl argo rollouts promote playground-api-bluegreen --namespace "$KUBE_NAMESPACE"'
+
+[tasks.bluegreen-abort]
+description = "Abort the blue-green update and keep the active version"
+run = 'kubectl argo rollouts abort playground-api-bluegreen --namespace "$KUBE_NAMESPACE"'
+
+[tasks.canary-apply]
+description = "Apply the canary Rollout example"
+run = 'kubectl --context "$KUBE_CONTEXT" apply --kustomize k8s/progressive/canary'
+
+[tasks.canary-status]
+description = "Watch canary Rollout state"
+run = 'kubectl argo rollouts get rollout playground-api-canary --namespace "$KUBE_NAMESPACE" --watch'
+
+[tasks.canary-promote]
+description = "Advance the canary to the next step"
+run = 'kubectl argo rollouts promote playground-api-canary --namespace "$KUBE_NAMESPACE"'
+
+[tasks.canary-abort]
+description = "Abort the canary and roll back"
+run = 'kubectl argo rollouts abort playground-api-canary --namespace "$KUBE_NAMESPACE"'
+
+[tasks.optional-apply]
+description = "Apply optional PDB and HPA examples"
+run = 'kubectl --context "$KUBE_CONTEXT" apply --kustomize k8s/optional'
