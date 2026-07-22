@@ -34,7 +34,7 @@ spec:
                 name: playground-api-canary-config
           env:
             - name: APP_VERSION
-              value: canary-v3
+              value: canary-v4
             - name: SECRET_MESSAGE
               valueFrom:
                 secretKeyRef:
