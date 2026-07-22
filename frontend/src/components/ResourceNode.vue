@@ -12,7 +12,7 @@ function labelRank(key:string):number{const index=preferredLabels.indexOf(key);r
 
 <template>
   <Handle type="target" :position="Position.Left" />
-  <div class="resource-icon"><KubeIcon :kind="data.kind" /></div>
-  <div class="resource-node-copy"><small>{{ data.kind }}</small><strong :title="data.name">{{ data.name }}</strong><span class="node-status"><i />{{ data.status }}</span><div v-if="tags.length" class="node-tags"><code v-for="([key,value]) in tags" :key="key" :title="`${key}=${value}`">{{ key.split('/').at(-1) }}={{ value }}</code></div></div>
+  <div class="resource-node-surface" :style="{'--stack-y':`${data.stackOffsetY??0}px`}"><div class="resource-icon"><KubeIcon :kind="data.kind" /></div>
+  <div class="resource-node-copy"><small>{{ data.kind }}</small><strong :title="data.name">{{ data.name }}</strong><span class="node-status"><i />{{ data.status }}</span><div v-if="tags.length" class="node-tags"><code v-for="([key,value]) in tags" :key="key" :title="`${key}=${value}`">{{ key.split('/').at(-1) }}={{ value }}</code></div></div></div>
   <Handle type="source" :position="Position.Right" />
 </template>

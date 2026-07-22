@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { MarkerType, VueFlow, type Edge, type Node, type VueFlowStore } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
@@ -12,11 +12,18 @@ import { healthOf, objects, read, text, type JsonObject, type Overview, type Res
 const props=defineProps<{model:ResourceModel;overview:Overview}>()
 const emit=defineEmits<{close:[];action:[action:'sync'|'promote'|'abort',target:ResourceActionTarget]}>()
 const selected=ref<TopologyResource|null>(null)
+const visibleNodeIds=ref<ReadonlySet<string>|null>(null)
+const enteringNodeIds=ref<ReadonlySet<string>>(new Set())
+const layoutAnimating=ref(false)
+const replayActive=ref(false)
+const animationTimers:number[]=[]
 const flowStore=shallowRef<VueFlowStore|null>(null)
 let viewportInitialized=false
 const topology=computed(()=>buildTopology(props.model,props.overview))
-const nodes=computed<Node<TopologyResource>[]>(()=>topology.value.nodes.map(node=>({id:node.id,type:'resource',position:node.position,data:node,class:`kind-${kindClass(node.kind)}`,selectable:true,draggable:true})))
-const edges=computed<Edge[]>(()=>topology.value.edges.map(edge=>({id:edge.id,source:edge.source,target:edge.target,type:'smoothstep',markerEnd:MarkerType.ArrowClosed,style:{stroke:'#8793a3',strokeWidth:1.5}})))
+const topologySignature=computed(()=>topology.value.nodes.map(node=>node.id).sort().join('|')+'::'+topology.value.edges.map(edge=>edge.id).sort().join('|'))
+const rankCenters=computed(()=>{const ranks=new Map<number,number[]>();for(const node of topology.value.nodes){const key=rankKey(node.position.x),values=ranks.get(key)??[];values.push(node.position.y);ranks.set(key,values)}return new Map([...ranks].map(([key,values])=>[key,values.reduce((sum,value)=>sum+value,0)/values.length]))})
+const nodes=computed<Node<TopologyResource>[]>(()=>topology.value.nodes.filter(node=>visibleNodeIds.value===null||visibleNodeIds.value.has(node.id)).map(node=>({id:node.id,type:'resource',position:node.position,data:{...node,stackOffsetY:(rankCenters.value.get(rankKey(node.position.x))??node.position.y)-node.position.y},class:`kind-${kindClass(node.kind)}${enteringNodeIds.value.has(node.id)?topology.value.edges.some(edge=>edge.target===node.id)?' node-stacked-entering':' node-root-entering':''}`,selectable:true,draggable:true})))
+const edges=computed<Edge[]>(()=>topology.value.edges.filter(edge=>(visibleNodeIds.value===null||visibleNodeIds.value.has(edge.source))&&(visibleNodeIds.value===null||visibleNodeIds.value.has(edge.target))).map(edge=>({id:edge.id,source:edge.source,target:edge.target,type:'smoothstep',markerEnd:MarkerType.ArrowClosed,style:{stroke:'#8793a3',strokeWidth:1.5}})))
 const activeResource=computed(()=>selected.value??topology.value.nodes[0]??null)
 const applicationTarget=computed<ResourceActionTarget|null>(()=>props.model.type==='application'?{type:'application',name:props.model.name,namespace:props.model.namespace}:null)
 const rolloutResource=computed(()=>topology.value.nodes.find(node=>node.kind==='Rollout')??null)
@@ -26,8 +33,16 @@ const labels=computed(()=>stringEntries(activeResource.value?.labels??{}))
 const annotations=computed(()=>stringEntries(activeResource.value?.annotations??{}).filter(([key])=>key!=='kubectl.kubernetes.io/last-applied-configuration'))
 const argoDetails=computed(()=>{const item=activeResource.value?.kind==='Application'?activeResource.value.item:null;if(!item)return null;const history=objects(item,'status.history').slice().reverse(),resources=objects(item,'status.resources'),latest=history[0];return{repoURL:text(item,'spec.source.repoURL','—'),path:text(item,'spec.source.path','—'),targetRevision:text(item,'spec.source.targetRevision','—'),project:text(item,'spec.project','default'),phase:text(item,'status.operationState.phase','Unknown'),message:text(item,'status.operationState.message','No operation message'),reconciledAt:text(item,'status.reconciledAt'),automated:read(item,'spec.syncPolicy.automated')!==undefined,selfHeal:read(item,'spec.syncPolicy.automated.selfHeal')===true,prune:read(item,'spec.syncPolicy.automated.prune')===true,history,resources,latest}})
 watch(topology,(current)=>{if(selected.value)selected.value=current.nodes.find(node=>node.id===selected.value?.id)??null})
+watch(topologySignature,(current,previous)=>{if(!previous||current===previous)return;visibleNodeIds.value=null;layoutAnimating.value=true;const previousIds=new Set(previous.split('::')[0]?.split('|')??[]),added=topology.value.nodes.filter(node=>!previousIds.has(node.id)).map(node=>node.id);enteringNodeIds.value=new Set(added);schedule(()=>{layoutAnimating.value=false;enteringNodeIds.value=new Set()},550)})
 async function initializeViewport(store:VueFlowStore):Promise<void>{flowStore.value=store;if(viewportInitialized)return;viewportInitialized=true;await nextTick();window.requestAnimationFrame(()=>void store.fitView({padding:.18,duration:0}))}
 async function fitGraph():Promise<void>{await flowStore.value?.fitView({padding:.18,duration:250})}
+function replayGraph():void{clearAnimationTimers();const ranks=new Map<number,typeof topology.value.nodes>();for(const node of topology.value.nodes){const key=rankKey(node.position.x);ranks.set(key,[...(ranks.get(key)??[]),node])}const orderedRanks=[...ranks.entries()].sort(([left],[right])=>left-right).map(([,rank])=>rank);visibleNodeIds.value=new Set();enteringNodeIds.value=new Set();layoutAnimating.value=true;replayActive.value=true;orderedRanks.forEach((rank,index)=>schedule(()=>{const ids=rank.map(node=>node.id);visibleNodeIds.value=new Set([...(visibleNodeIds.value??[]),...ids]);for(const id of ids)addEntering(id);schedule(()=>{for(const id of ids)removeEntering(id)},900)},index*920));schedule(()=>{visibleNodeIds.value=null;enteringNodeIds.value=new Set();layoutAnimating.value=false;replayActive.value=false},orderedRanks.length*920+1000)}
+function rankKey(x:number):number{return Math.round(x)}
+function addEntering(id:string):void{enteringNodeIds.value=new Set([...enteringNodeIds.value,id])}
+function removeEntering(id:string):void{const next=new Set(enteringNodeIds.value);next.delete(id);enteringNodeIds.value=next}
+function schedule(task:()=>void,delay:number):void{animationTimers.push(window.setTimeout(task,delay))}
+function clearAnimationTimers():void{for(const timer of animationTimers)window.clearTimeout(timer);animationTimers.length=0}
+onBeforeUnmount(clearAnimationTimers)
 function selectNode(event:{node:Node<TopologyResource>}):void{if(event.node.data)selected.value=event.node.data}
 function requestAction(action:'sync'|'promote'|'abort',target:ResourceActionTarget|null):void{if(target)emit('action',action,target)}
 function kindClass(kind:string):string{return kind.replace(/([a-z])([A-Z])/g,'$1-$2').toLowerCase()}
@@ -45,9 +60,9 @@ function stringEntries(record:Readonly<Record<string,unknown>>):readonly [string
   <div class="modal modal-open topology-overlay" @click.self="emit('close')">
     <section class="modal-box topology-window" role="dialog" aria-modal="true" :aria-label="`${model.name} topology`">
       <header class="topology-titlebar"><div><span>{{ model.kind }}</span><h2>{{ model.name }}</h2><p>{{ model.namespace }} · {{ model.status }} · {{ model.ready }}</p></div><div><div class="topology-primary-actions"><button v-if="applicationTarget" class="btn btn-primary btn-sm" @click="requestAction('sync',applicationTarget)">Sync</button><button v-if="rolloutTarget" class="btn btn-primary btn-sm" :disabled="!rolloutPaused" @click="requestAction('promote',rolloutTarget)">Promote</button><button v-if="rolloutTarget" class="btn btn-outline btn-error btn-sm" @click="requestAction('abort',rolloutTarget)">Roll back</button></div><span class="live"><i />Live topology</span><button class="btn btn-ghost btn-sm btn-square close" aria-label="Close topology" @click="emit('close')">×</button></div></header>
-      <div class="topology-tools"><div class="legend kind-legend"><span v-for="kind in ['Application','Deployment','Rollout','ReplicaSet','Pod','Service','ConfigMap','Secret','ServiceAccount','Namespace','AnalysisRun']" :key="kind" :class="`kind-${kindClass(kind)}`"><KubeIcon :kind="kind" />{{ kind==='AnalysisRun'?'Analysis':kind }}</span></div><button class="btn btn-ghost btn-xs" @click="fitGraph">Fit to view</button></div>
+      <div class="topology-tools"><div class="legend kind-legend"><span v-for="kind in ['Application','Deployment','Rollout','ReplicaSet','Pod','Service','ConfigMap','Secret','ServiceAccount','Namespace','AnalysisRun']" :key="kind" :class="`kind-${kindClass(kind)}`"><KubeIcon :kind="kind" />{{ kind==='AnalysisRun'?'Analysis':kind }}</span></div><div class="topology-view-actions"><button class="btn btn-ghost btn-xs" @click="replayGraph">▶ Replay graph</button><button class="btn btn-ghost btn-xs" @click="fitGraph">Fit to view</button></div></div>
       <div class="topology-layout">
-        <div class="flow-wrap">
+        <div :class="['flow-wrap',{'layout-animating':layoutAnimating,'replay-active':replayActive}]">
           <VueFlow :nodes="nodes" :edges="edges" :nodes-connectable="false" :elements-selectable="true" :min-zoom="0.35" :max-zoom="1.75" @pane-ready="initializeViewport" @node-click="selectNode">
             <template #node-resource="nodeProps"><ResourceNode v-bind="nodeProps" /></template>
             <Background pattern-color="#ccd3dc" :gap="20" :size="1" />

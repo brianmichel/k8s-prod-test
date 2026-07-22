@@ -2,7 +2,7 @@ import dagre from '@dagrejs/dagre'
 import { object, objects, read, text, type JsonObject, type Overview, type ResourceModel } from './domain'
 
 export type NodeCategory = 'controller' | 'network' | 'workload' | 'analysis' | 'configuration' | 'identity' | 'scope'
-export interface TopologyResource { readonly id:string; readonly kind:string; readonly name:string; readonly namespace:string; readonly category:NodeCategory; readonly status:string; readonly labels:JsonObject; readonly annotations:JsonObject; readonly item:JsonObject | null }
+export interface TopologyResource { readonly id:string; readonly kind:string; readonly name:string; readonly namespace:string; readonly category:NodeCategory; readonly status:string; readonly labels:JsonObject; readonly annotations:JsonObject; readonly item:JsonObject | null; readonly stackOffsetY?:number }
 export interface TopologyEdge { readonly id:string; readonly source:string; readonly target:string }
 export interface PositionedResource extends TopologyResource { readonly position:{readonly x:number;readonly y:number} }
 export interface Topology { readonly nodes:readonly PositionedResource[]; readonly edges:readonly TopologyEdge[] }
