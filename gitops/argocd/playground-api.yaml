@@ -9,7 +9,7 @@ spec:
   project: default
   source:
     # Replace this with a Git URL that Argo CD can reach.
-    repoURL: https://github.com/REPLACE_ME/k8s-prod-test.git
+    repoURL: https://github.com/brianmichel/k8s-prod-test.git
     targetRevision: main
     path: k8s/overlays/local
   destination:
