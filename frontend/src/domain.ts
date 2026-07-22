@@ -9,9 +9,33 @@ export interface Overview {
   readonly deployments: readonly JsonObject[]
   readonly replicaSets: readonly JsonObject[]
   readonly services: readonly JsonObject[]
+  readonly configMaps: readonly JsonObject[]
+  readonly serviceAccounts: readonly JsonObject[]
+  readonly namespaces: readonly JsonObject[]
   readonly analysisRuns: readonly JsonObject[]
   readonly pods: readonly JsonObject[]
   readonly warnings: readonly string[]
+}
+
+export interface ArgoApplicationDetails {
+  readonly repoURL: string
+  readonly targetRevision: string
+  readonly project: string
+  readonly operationPhase: string
+  readonly operationMessage: string
+  readonly lastDeployedAt: string
+  readonly deployedBy: string
+  readonly reconciledAt: string
+  readonly automated: boolean
+  readonly selfHeal: boolean
+  readonly prune: boolean
+  readonly managedResources: number
+}
+
+export interface ResourceActionTarget {
+  readonly type: 'application' | 'rollout'
+  readonly name: string
+  readonly namespace: string
 }
 
 export interface ResourceModel {
@@ -32,6 +56,7 @@ export interface ResourceModel {
   readonly steps: number
   readonly paused: boolean
   readonly application: string | null
+  readonly argo: ArgoApplicationDetails | null
 }
 
 /** Reads a nested value from an untrusted Kubernetes JSON object. */
@@ -81,6 +106,9 @@ export function parseOverview(value: unknown): Overview {
     deployments: objects(value, 'deployments'),
     replicaSets: objects(value, 'replicaSets'),
     services: objects(value, 'services'),
+    configMaps: objects(value, 'configMaps'),
+    serviceAccounts: objects(value, 'serviceAccounts'),
+    namespaces: objects(value, 'namespaces'),
     analysisRuns: objects(value, 'analysisRuns'),
     pods: objects(value, 'pods'),
     warnings: Array.isArray(warningsValue) ? warningsValue.filter((item): item is string => typeof item === 'string') : [],

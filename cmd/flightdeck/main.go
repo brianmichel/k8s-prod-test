@@ -31,15 +31,18 @@ type resourceList struct {
 }
 
 type overview struct {
-	GeneratedAt  time.Time        `json:"generatedAt"`
-	Applications []map[string]any `json:"applications"`
-	Rollouts     []map[string]any `json:"rollouts"`
-	Deployments  []map[string]any `json:"deployments"`
-	ReplicaSets  []map[string]any `json:"replicaSets"`
-	Services     []map[string]any `json:"services"`
-	AnalysisRuns []map[string]any `json:"analysisRuns"`
-	Pods         []map[string]any `json:"pods"`
-	Warnings     []string         `json:"warnings,omitempty"`
+	GeneratedAt     time.Time        `json:"generatedAt"`
+	Applications    []map[string]any `json:"applications"`
+	Rollouts        []map[string]any `json:"rollouts"`
+	Deployments     []map[string]any `json:"deployments"`
+	ReplicaSets     []map[string]any `json:"replicaSets"`
+	Services        []map[string]any `json:"services"`
+	ConfigMaps      []map[string]any `json:"configMaps"`
+	ServiceAccounts []map[string]any `json:"serviceAccounts"`
+	Namespaces      []map[string]any `json:"namespaces"`
+	AnalysisRuns    []map[string]any `json:"analysisRuns"`
+	Pods            []map[string]any `json:"pods"`
+	Warnings        []string         `json:"warnings,omitempty"`
 }
 
 func newKubeClient() (*kubeClient, error) {
@@ -145,6 +148,9 @@ func overviewHandler(kube *kubeClient, logger *slog.Logger) http.HandlerFunc {
 			{"deployments", "/apis/apps/v1/deployments", &result.Deployments},
 			{"replica sets", "/apis/apps/v1/replicasets", &result.ReplicaSets},
 			{"services", "/api/v1/services", &result.Services},
+			{"config maps", "/api/v1/configmaps", &result.ConfigMaps},
+			{"service accounts", "/api/v1/serviceaccounts", &result.ServiceAccounts},
+			{"namespaces", "/api/v1/namespaces", &result.Namespaces},
 			{"analysis runs", "/apis/argoproj.io/v1alpha1/analysisruns", &result.AnalysisRuns},
 			{"pods", "/api/v1/pods", &result.Pods},
 		}
