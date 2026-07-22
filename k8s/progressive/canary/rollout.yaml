@@ -6,7 +6,7 @@ metadata:
     app: playground-api-canary
 spec:
   replicas: 4
-  revisionHistoryLimit: 3
+  revisionHistoryLimit: 2
   selector:
     matchLabels:
       app: playground-api-canary

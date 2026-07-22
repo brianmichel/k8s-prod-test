@@ -31,6 +31,7 @@ export interface ResourceModel {
   readonly step: number
   readonly steps: number
   readonly paused: boolean
+  readonly application: string | null
 }
 
 /** Reads a nested value from an untrusted Kubernetes JSON object. */
